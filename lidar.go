@@ -31,14 +31,14 @@ const (
 	maxIntervalValue          = 0xff
 )
 
-// Values for use with SetDistanceAndVelocityMode and SetContinuousDistanceMode.
+// Values for use with SetDistanceAndVelocityMode and SetContinuousMode.
 const (
 	DefaultAcquisitionInterval = (defaultIntervalValue >> 1) * time.Millisecond
 	MinAcquisitionInterval     = (minIntervalValue >> 1) * time.Millisecond
 	MaxAcquisitionInterval     = (maxIntervalValue >> 1) * time.Millisecond
 )
 
-// InfiniteAcquisitions passed to SetContinuousDistanceMode makes LIDAR measure distance infinitely
+// InfiniteAcquisitions passed to SetContinuousMode makes LIDAR measure distance infinitely
 const InfiniteAcquisitions = 0xff
 
 // GetStatus() bits
@@ -187,12 +187,12 @@ func (ls *Lidar) SetDistanceOnlyMode() error {
 	return ls.setAcquisitionCount(0)
 }
 
-// SetContinuousDistanceMode prepares LIDAR registers for continuous distance measurement.
+// SetContinuousMode prepares LIDAR registers for continuous distance and velocity measurement.
 // Call sequence:
-//   SetContinuousDistanceMode(...)
+//   SetContinuousMode(...)
 //   Acquire(...)
-//   in a loop: ReadDistance()
-func (ls *Lidar) SetContinuousDistanceMode(total byte, interval time.Duration) error {
+//   in a loop: ReadDistance() / ReadVelocity()
+func (ls *Lidar) SetContinuousMode(total byte, interval time.Duration) error {
 	if err := ls.setAcquisitionInterval(interval, false); err != nil {
 		return err
 	}
