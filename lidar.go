@@ -11,8 +11,9 @@ import (
 
 // TODO: add mutex
 
-// Lidar is a structure to access basic functions of LIDAR-Lite V2 "Blue Label"
+// Lidar is a structure to access basic functions of LIDAR-Lite V2 "Blue Label".
 // Documentation at http://lidarlite.com/docs/v2/specs_and_hardware
+// Tested on model LL-905-PIN-02.
 type Lidar struct {
 	bus         *i2c.Bus
 	address     byte
@@ -53,20 +54,27 @@ const (
 	// SignalOverflow - see description for ReferenceOverflow
 	SignalOverflow = 1 << iota
 
-	// SignalNotValid - signal correlation peak is equal to or below correlation record threshold
-	SignalNotValid = 1 << iota
+	// SignalNotDetected - signal correlation peak is equal to or below correlation record threshold
+	SignalNotDetected = 1 << iota
 
-	// SecondaryReturn - secondary return detected above correlation noise floor threshold
-	SecondaryReturn = 1 << iota
+	// SecondReturn - second peak above correlation noise floor threshold has been detected
+	SecondReturn = 1 << iota
 
-	// Healthy status indicates that preamp is operating properly, transmit power
-	// is active and a reference pulse has been processed and has been stored
+	// Healthy status indicates that preamplifier (DC) is operating properly,
+	// transmit power is active and a reference pulse has been processed and has been stored
 	Healthy = 1 << iota
 
 	// ErrorDetected and measurement is invalid
 	ErrorDetected = 1 << iota
 
+	// EyeSafetyActivated is when safe average power use has been exceeded and limit is in place
 	EyeSafetyActivated = 1 << iota
+)
+
+const (
+	detailedHealthReference     = 1 << 1
+	detailedHealthTransmitPower = 1 << 2
+	detailedHealthDC            = 1 << 3
 )
 
 // NewLidar resets the sensor and returns all registers to defaults
@@ -111,12 +119,23 @@ func (ls *Lidar) waitAcquisitionReady() error {
 	if err == nil {
 		if (status & Healthy) == 0 {
 			err = errors.New("LIDAR has failed to reach Healthy status")
+			if detailedHealth, hErr := ls.bus.ReadByteFromReg(ls.address, 0x48); hErr == nil {
+				if (detailedHealth & detailedHealthReference) == 0 {
+					err = errors.New("LIDAR unhealthy: reference signal failure")
+				}
+				if (detailedHealth & detailedHealthTransmitPower) == 0 {
+					err = errors.New("LIDAR unhealthy: transmit power failure")
+				}
+				if (detailedHealth & detailedHealthDC) == 0 {
+					err = errors.New("LIDAR unhealthy: DC (preamplifier) failure")
+				}
+			}
 		}
 		if (status & ErrorDetected) != 0 {
 			err = errors.New("LIDAR has detected an error during measurement")
 		}
-		if (status & SignalNotValid) != 0 {
-			err = errors.New("LIDAR has received a signal that is not valid")
+		if (status & SignalNotDetected) != 0 {
+			err = errors.New("LIDAR has not received it's signal")
 		}
 	}
 	log.Println("waitAcquisitionReady:", err)
@@ -130,6 +149,17 @@ func (ls *Lidar) Reset() error {
 		return err
 	}
 	return ls.waitReadyForCommand()
+}
+
+// Sleep puts LIDAR into low power consumption mode.
+// Use Wake() before sending any other command.
+func (ls *Lidar) Sleep() error {
+	return ls.bus.WriteByteToReg(ls.address, 0x65, 1<<2)
+}
+
+// Wake LIDAR from the sleep state by sending dummy command
+func (ls *Lidar) Wake() {
+	_, _ = ls.GetStatus()
 }
 
 // GetStatus gets Mode/Status of sensor
