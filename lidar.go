@@ -27,10 +27,16 @@ const (
 	velocityModeEnabled       = 1 << 7
 	modeControlRegister       = 0x04
 	defaultIntervalValue      = 0xc8
+	minIntervalValue          = 0x02 // minimal interval value for proper operation
+	maxIntervalValue          = 0xff
 )
 
-// DefaultAcquisitionInterval for use with SetDistanceAndVelocityMode and SetContinuousDistanceMode.
-const DefaultAcquisitionInterval = defaultIntervalValue / 2 * time.Millisecond
+// Values for use with SetDistanceAndVelocityMode and SetContinuousDistanceMode.
+const (
+	DefaultAcquisitionInterval = (defaultIntervalValue >> 1) * time.Millisecond
+	MinAcquisitionInterval     = (minIntervalValue >> 1) * time.Millisecond
+	MaxAcquisitionInterval     = (maxIntervalValue >> 1) * time.Millisecond
+)
 
 // InfiniteAcquisitions passed to SetContinuousDistanceMode makes LIDAR measure distance infinitely
 const InfiniteAcquisitions = 0xff
@@ -150,9 +156,8 @@ func (ls *Lidar) setAcquisitionInterval(interval time.Duration, velocity bool) e
 		}
 	} else {
 		// 0xc8 corresponds to 10Hz, 0x14 corresponds to 100Hz.
-		// Minimum value is 0x02 for proper operation.
 		translatedInterval := interval.Nanoseconds() * 2 / 1000000
-		if translatedInterval < 0x02 || translatedInterval > 0xff {
+		if translatedInterval < minIntervalValue || translatedInterval > maxIntervalValue {
 			return fmt.Errorf("Specified measurement interval %v is not achievable", interval)
 		}
 		if err := ls.bus.WriteByteToReg(ls.address, 0x45, byte(translatedInterval)); err != nil {
