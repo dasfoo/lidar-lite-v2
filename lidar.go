@@ -288,18 +288,18 @@ func (ls *Lidar) GetDistance() (value uint16, err error) {
 
 // ReadVelocity waits until acquisition is complete and reads velocity. Unit is cm/s.
 func (ls *Lidar) ReadVelocity() (value int16, err error) {
-	if err := ls.waitAcquisitionReady(); err != nil {
-		return 0, err
+	if err = ls.waitAcquisitionReady(); err != nil {
+		return
 	}
 	control, err := ls.bus.ReadByteFromReg(ls.address, modeControlRegister)
 	if err != nil {
-		return 0, err
+		return
 	}
 	scale := byte(defaultIntervalValue)
 	if (control & customAcquisitionInterval) != 0 {
 		scale, err = ls.bus.ReadByteFromReg(ls.address, 0x45)
 		if err != nil {
-			return 0, err
+			return
 		}
 	}
 	valueUnscaled, err := ls.bus.ReadByteFromReg(ls.address, 0x09)
