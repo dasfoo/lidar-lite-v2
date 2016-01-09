@@ -145,6 +145,7 @@ func (ls *Lidar) waitAcquisitionReady() error {
 // Reset re-loads FPGA from internal Flash memory:
 // run a self-test, reset all registers to default values, go into sleep mode (< 10mA).
 func (ls *Lidar) Reset() error {
+	ls.Wake() // Make sure the LIDAR is awake and accepts the next command.
 	if err := ls.bus.WriteByteToReg(ls.address, 0x00, 0x00); err != nil {
 		return err
 	}
