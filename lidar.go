@@ -84,7 +84,6 @@ func NewLidar(bus *i2c.Bus, addr byte) *Lidar {
 		address:     addr,
 		WaitTimeout: 2 * time.Second,
 	}
-	_ = ls.Reset()
 	return ls
 }
 
@@ -145,7 +144,10 @@ func (ls *Lidar) waitAcquisitionReady() error {
 // Reset re-loads FPGA from internal Flash memory:
 // run a self-test, reset all registers to default values, go into sleep mode (< 10mA).
 func (ls *Lidar) Reset() error {
-	ls.Wake() // Make sure the LIDAR is awake and accepts the next command.
+	// Make sure the LIDAR is awake and accepts the next command.
+	if err := ls.Wake(); err != nil {
+		return err
+	}
 	if err := ls.bus.WriteByteToReg(ls.address, 0x00, 0x00); err != nil {
 		return err
 	}
@@ -155,12 +157,13 @@ func (ls *Lidar) Reset() error {
 // Sleep puts LIDAR into low power consumption mode.
 // Use Wake() before sending any other command.
 func (ls *Lidar) Sleep() error {
-	return ls.bus.WriteByteToReg(ls.address, 0x65, 1<<2)
+	return ls.bus.WriteByteToReg(ls.address, 0x65, 0x0f)
 }
 
-// Wake LIDAR from the sleep state by sending dummy command
-func (ls *Lidar) Wake() {
+// Wake LIDAR from the sleep state by sending dummy command and enabling sensors
+func (ls *Lidar) Wake() error {
 	_, _ = ls.GetStatus()
+	return ls.bus.WriteByteToReg(ls.address, 0x65, 0x00)
 }
 
 // GetStatus gets Mode/Status of sensor
