@@ -11,6 +11,37 @@ import (
 
 // TODO: add mutex
 
+// HealthError is returned when LIDAR has unhealthy status
+type HealthError struct {
+	healthFlags byte
+}
+
+// HealthError GetHealthFlags() bit fields
+const (
+	UnhealthyReference     byte = 1 << 1
+	UnhealthyTransmitPower      = 1 << 2
+	UnhealthyDC                 = 1 << 3
+)
+
+// GetHealthFlags returns bitmask of which parts of LIDAR are unhealthy
+func (e *HealthError) GetHealthFlags() byte {
+	return e.healthFlags
+}
+
+// Error description, human-readable
+func (e *HealthError) Error() string {
+	if (e.healthFlags & UnhealthyReference) != 0 {
+		return "LIDAR unhealthy: reference signal failure"
+	}
+	if (e.healthFlags & UnhealthyTransmitPower) != 0 {
+		return "LIDAR unhealthy: transmit power failure"
+	}
+	if (e.healthFlags & UnhealthyDC) != 0 {
+		return "LIDAR unhealthy: DC (preamplifier) failure"
+	}
+	return "LIDAR unhealthy, measurement result may be inaccurate"
+}
+
 // Lidar is a structure to access basic functions of LIDAR-Lite V2 "Blue Label".
 // Documentation at http://lidarlite.com/docs/v2/specs_and_hardware
 // Tested on model LL-905-PIN-02.
@@ -71,12 +102,6 @@ const (
 	EyeSafetyActivated = 1 << iota
 )
 
-const (
-	detailedHealthReference     = 1 << 1
-	detailedHealthTransmitPower = 1 << 2
-	detailedHealthDC            = 1 << 3
-)
-
 // NewLidar resets the sensor and returns all registers to defaults
 func NewLidar(bus *i2c.Bus, addr byte) *Lidar {
 	ls := &Lidar{
@@ -117,18 +142,8 @@ func (ls *Lidar) waitAcquisitionReady() error {
 	status, err := ls.waitReadyStatus()
 	if err == nil {
 		if (status & Healthy) == 0 {
-			err = errors.New("LIDAR has failed to reach Healthy status")
-			if detailedHealth, hErr := ls.bus.ReadByteFromReg(ls.address, 0x48); hErr == nil {
-				if (detailedHealth & detailedHealthReference) == 0 {
-					err = errors.New("LIDAR unhealthy: reference signal failure")
-				}
-				if (detailedHealth & detailedHealthTransmitPower) == 0 {
-					err = errors.New("LIDAR unhealthy: transmit power failure")
-				}
-				if (detailedHealth & detailedHealthDC) == 0 {
-					err = errors.New("LIDAR unhealthy: DC (preamplifier) failure")
-				}
-			}
+			healthFlags, _ := ls.bus.ReadByteFromReg(ls.address, 0x48)
+			err = &HealthError{healthFlags: healthFlags}
 		}
 		if (status & ErrorDetected) != 0 {
 			err = errors.New("LIDAR has detected an error during measurement")
@@ -263,11 +278,19 @@ func (ls *Lidar) Acquire(stablizePreamp bool) error {
 }
 
 // ReadDistance waits until acquisition is complete and reads distance. The unit is meters.
+// If error is HealthError, the result is read but may be inaccurate.
 func (ls *Lidar) ReadDistance() (uint16, error) {
-	if err := ls.waitAcquisitionReady(); err != nil {
+	healthError := ls.waitAcquisitionReady()
+	if healthError != nil {
+		if _, ok := healthError.(*HealthError); !ok {
+			return 0, healthError
+		}
+	}
+	value, err := ls.bus.ReadWordFromReg(ls.address, 0x8f)
+	if err != nil {
 		return 0, err
 	}
-	return ls.bus.ReadWordFromReg(ls.address, 0x8f)
+	return value, healthError
 }
 
 // GetDistance is a convenience method to get a single distance measurement from the LIDAR.
@@ -291,25 +314,31 @@ func (ls *Lidar) GetDistance() (value uint16, err error) {
 }
 
 // ReadVelocity waits until acquisition is complete and reads velocity. Unit is cm/s.
-func (ls *Lidar) ReadVelocity() (value int16, err error) {
-	if err = ls.waitAcquisitionReady(); err != nil {
-		return
+// If error implements HealthError, the result is read but may be inaccurate.
+func (ls *Lidar) ReadVelocity() (int16, error) {
+	healthError := ls.waitAcquisitionReady()
+	if healthError != nil {
+		if _, isHealthError := healthError.(*HealthError); !isHealthError {
+			return 0, healthError
+		}
 	}
 	control, err := ls.bus.ReadByteFromReg(ls.address, modeControlRegister)
 	if err != nil {
-		return
+		return 0, err
 	}
 	scale := byte(defaultIntervalValue)
 	if (control & customAcquisitionInterval) != 0 {
-		scale, err = ls.bus.ReadByteFromReg(ls.address, 0x45)
-		if err != nil {
-			return
+		if scale, err = ls.bus.ReadByteFromReg(ls.address, 0x45); err != nil {
+			return 0, err
 		}
 	}
 	valueUnscaled, err := ls.bus.ReadByteFromReg(ls.address, 0x09)
+	if err != nil {
+		return 0, err
+	}
 	// valueUnscaled is read as byte (uint8), but in fact is signed (int8)
-	value = int16(int(int8(valueUnscaled)) * int(scale) / 20)
-	return
+	value := int16(int(int8(valueUnscaled)) * int(scale) / 20)
+	return value, healthError
 }
 
 // GetVersion gets hardware and software revision of the LIDAR-Lite.
