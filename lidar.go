@@ -3,7 +3,6 @@ package lidar
 import (
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/dasfoo/i2c"
@@ -104,12 +103,11 @@ const (
 
 // NewLidar resets the sensor and returns all registers to defaults
 func NewLidar(bus *i2c.Bus, addr byte) *Lidar {
-	ls := &Lidar{
+	return &Lidar{
 		bus:         bus,
 		address:     addr,
 		WaitTimeout: 2 * time.Second,
 	}
-	return ls
 }
 
 func (ls *Lidar) waitReadyStatus() (status byte, err error) {
@@ -129,7 +127,6 @@ func (ls *Lidar) waitReadyStatus() (status byte, err error) {
 	if err == nil {
 		err = errors.New("Timed out waiting for non-Busy LIDAR status")
 	}
-	log.Println("waitReadyStatus:", err)
 	return
 }
 
@@ -152,7 +149,6 @@ func (ls *Lidar) waitAcquisitionReady() error {
 			err = errors.New("LIDAR has not received it's signal")
 		}
 	}
-	log.Println("waitAcquisitionReady:", err)
 	return err
 }
 
@@ -184,7 +180,6 @@ func (ls *Lidar) Wake() error {
 // GetStatus gets Mode/Status of sensor
 func (ls *Lidar) GetStatus() (byte, error) {
 	value, err := ls.bus.ReadByteFromReg(ls.address, 0x01)
-	log.Printf("GetStatus: %.8b\n", value)
 	return value, err
 }
 
