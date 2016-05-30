@@ -45,7 +45,7 @@ func (e *HealthError) Error() string {
 // Documentation at http://lidarlite.com/docs/v2/specs_and_hardware
 // Tested on model LL-905-PIN-02.
 type Lidar struct {
-	bus         *i2c.Bus
+	bus         i2c.Bus
 	address     byte
 	WaitTimeout time.Duration
 }
@@ -102,7 +102,7 @@ const (
 )
 
 // NewLidar resets the sensor and returns all registers to defaults
-func NewLidar(bus *i2c.Bus, addr byte) *Lidar {
+func NewLidar(bus i2c.Bus, addr byte) *Lidar {
 	return &Lidar{
 		bus:         bus,
 		address:     addr,
